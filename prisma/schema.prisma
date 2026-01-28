@@ -11,4 +11,90 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Organizations (Multi-tenancy)
+model Organization{
+  id    String    @id @default(uuid())
+  name  String
+  subscriptionTier  String    @default("free") // free, paid, enterprise
+  settings  Json?   @db.JsonB
+  createdAt DateTime()    @default(now())
+  updatedAt DateTime()    @updatedAt
+
+  // Relations
+  users   User[]
+  tasks   Task[]
+
+  @@map('organizations')
+}
+
+// Users
+model User {
+  id      String      @id @default(uuid())
+  organizationId      String
+  email     String      @unique
+  role      String      @default("member") // owner, admin, member
+  firsName      String?
+  lastName      String?
+  avatar      String?
+  preferences     Json?     @db.JsonB
+  lastLogin     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  organization      Organization @relation(fields:[organizationId],references:[id], onDelete:Cascade)
+  tasks             Task[]
+  comments          Comment[]
+  activityLogs      ActivityLog[]
+
+  @@index([organizationId])
+  @@index([email])
+  @@map('users')
+}
+
+// Tasks 
+model Task{
+  id              String          @id @default(uuid())
+  organizationId  String
+  userId          String
+  parentTaskId    String?
+  title           String
+  description     String?         @db.Text
+  status          String          @default("todo") // todo, in_progress, completed, archived
+  deadline        DateTime?
+  estimatedDuration Int?          //in minutes
+  actualDuration  Int?  // in minutes
+  priorityScore   Float           @default (50.0)
+  priorityFactors Json?           @db.JsonB
+  tags            Json?           @db.JsonB // array of strings
+  metadata        Json?           @db.JsonB // custom fields
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  completedAt     DateTime?
+  isDeleted       Boolean         @default(false)
+
+  // Relations
+  organization    Organization @relation(fields:[organizationId], references:[id], onDelete: Cascade)
+  user            User  @relation(fields:[userId],references:[id], onDelete: Cascade)
+  parentTask      Task? @relation('TaskHierarchy", fields:[parentTaskId],references:[id]);
+  subtasks        Task[] @relation('TaskHierarchy')
+  dependsOn       TaskDependency[]    @relation('DependentTask')
+  blockedBy       TaskDependency[]    @relation('BlockingTask')
+  notes           Note[]
+  comments        Comment[]
+  attachments     Attachment[]
+  priorityMetrics PriorityMetric[]
+  activityLogs    ActivityLog[]
+
+  @@index([organizationId, userId, status])
+  @@index([organizationId, priorityScore])
+  @@index([deadline])
+  @@index([isDeleted])
+  @@fulltext([title, description])
+
+  @@map('tasks')
 }
